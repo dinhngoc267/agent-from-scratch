@@ -172,12 +172,6 @@ class ActionRegistry:
         self.tools[tool.name] = tool
 
     def register(self, action: Tool | Callable, terminal: bool = False):
-        """Register a tool in this registry. `action` must be a Tool, or a function
-        already decorated with @tool (carrying ._tool_metadata) — a plain, undecorated
-        callable is rejected, so the Tool is always an explicit, intentional object.
-        `terminal` is per-registry: the same function may be terminal here but not in
-        another registry. When set, the Tool is copied so the shared instance is never
-        mutated."""
         if isinstance(action, Tool):
             tool = action
         else:
@@ -240,12 +234,6 @@ def has_named_parameter(func: Callable, name: str) -> bool:
 def context_param(func: Callable) -> Optional[tuple[str, type]]:
     """Find the injected-context parameter of a tool and the ActionContext type it
     requires, or None if the tool declares no context.
-
-    Detection is purely BY TYPE — no reserved parameter name: a param is the context
-    iff its annotation is ActionContext or a subclass. The param may be named
-    anything; the contract is the type. This is the single source of truth for
-    "which param is hidden from the LLM, injected by the Environment, and validated
-    by the Agent". A tool wanting the generic context annotates the base ActionContext.
     """
     try:
         hints = get_type_hints(func)
@@ -406,9 +394,7 @@ class Agent:
 
     @staticmethod
     def _to_content(result: Any) -> str:
-        """Render a tool's return value as text for the LLM. Tools keep their
-        native types; only this LLM-facing representation is stringified, with
-        dict/list/BaseModel emitted as JSON rather than Python repr."""
+        """Render a tool's return value as text for the LLM. """
         if isinstance(result, BaseModel):
             return result.model_dump_json()
         if isinstance(result, (dict, list)):
@@ -479,10 +465,7 @@ def multiply(a: float, b: float) -> float:
     return a * b
 
 
-# A tool types its context param to a SUBCLASS — an honest contract: this tool
-# genuinely needs that capability. The framework hides it from the LLM (by type),
-# injects the agent's instance, and the Agent verifies at construction that the
-# instance is-a UserContext. Fields are typed and validated at construction.
+
 class UserContext(ActionContext):
     """Context for user-store tools. Holds the hidden DB the LLM must never see."""
     db: dict
@@ -512,12 +495,7 @@ def audit(event: str, action_context: AuditContext) -> str:
 
 
 def chat_loop():
-    """Interactive REPL: chat with an agent that has the add and multiply tools.
 
-    Memory persists across turns because Agent.run() only appends to self.memory —
-    each user message and the agent's tool calls/answers accumulate, so the agent
-    can refer back to earlier results in the same session ("multiply that by 3").
-    """
     registry = ActionRegistry()
     registry.register(add)
     registry.register(multiply)
@@ -590,9 +568,6 @@ if __name__ == "__main__":
     print("\n[BaseModel] result:", result_b)
     print(json.dumps([m.model_dump(exclude_none=True) for m in agent_b.memory.get()], indent=4))
 
-    # Hidden context via a SUBCLASS-typed param. lookup_user declares
-    # action_context: UserContext; the agent supplies a UserContext holding the
-    # hidden db. The LLM never sees the context param — confirm it's stripped.
     fake_db = {7: {"id": 7, "name": "Ada", "email": "ada@example.com"}}
 
     registry_c = ActionRegistry()
@@ -615,8 +590,7 @@ if __name__ == "__main__":
     result_c = agent_c.run("Who is user 7?")
     print("\n[context] result:", result_c)
 
-    # Validation: a tool needs UserContext but the agent is given the wrong type
-    # -> TypeError at construction (NOT when the LLM eventually calls the tool).
+
     try:
         Agent(
             goal="...",
