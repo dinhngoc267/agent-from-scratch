@@ -262,26 +262,13 @@ class ActionContext(BaseModel):
     """The hidden context the Environment injects into tools that declare it.
 
     Holds everything we want HIDDEN from the LLM — connection strings, clients,
-    secrets, the agent itself — as TYPED FIELDS on subclasses. The param holding it
-    is detected and stripped from the LLM-facing schema BY TYPE (any ActionContext
-    subclass annotation), so the contents are never serialized into memory or shown
-    to the model — and there is no reserved parameter name.
+    secrets, the agent itself.
 
-    Subclass it per capability set, declaring typed fields and helper methods:
-
+    We can declare subclass `ActionContext` as well. 
         class UserContext(ActionContext):
-            db: dict                            # typed, validated at construction
+            db: dict                            
             def get_user(self, uid: int) -> dict:
                 return self.db[uid]
-
-        def lookup_user(user_id: int, ctx: UserContext) -> dict:
-            return ctx.get_user(user_id)        # attribute access, autocompletes
-
-    Pydantic validates fields at construction, so a missing/wrong capability fails
-    when the context is built — earlier than at the tool call. The Agent holds ONE
-    instance and injects it into every tool; that instance must be-a every tool's
-    declared context type (see Agent._validate_context). When tools need different
-    context types, combine them by subclassing (class App(UserContext, AuditContext)).
 
     `arbitrary_types_allowed` lets fields hold live objects (db clients, sockets,
     the agent) that aren't JSON-serializable.
